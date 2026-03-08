@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Heizplan Pro - Full Modulo</title>
+    <style>
+        :root { 
+            --cell-h: 0.7vh; 
+            --day-w: 12.5vw; 
+            --time-w: 12.5vw; 
+            --active-color: #3498db; 
+        }
+        html, body { 
+            margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; 
+            position: fixed; font-family: sans-serif; background: #111; color: #eee;
+            user-select: none; -webkit-user-select: none; touch-action: none;
+        }
+        .header-nav { 
+            height: 6vh; display: flex; align-items: center; justify-content: space-between;
+            padding: 0 10px; background: #1a1a1a; border-bottom: 1px solid #333; z-index: 200;
+        }
+        #live-info {
+            font-size: 13px; font-weight: bold; color: #aaa;
+            background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 4px;
+            min-width: 140px; text-align: center;
+        }
+        .main-container { height: 86vh; overflow: hidden; position: relative; }
+        .grid {
+            display: grid; grid-template-columns: var(--time-w) repeat(7, var(--day-w));
+            background: #333; position: relative; width: 100vw; height: 100%;
+        }
+        .h { background: #222; font-size: 2.5vw; text-align: center; display: flex; align-items: center; justify-content: center; font-weight: bold; border-bottom: 2px solid #444; height: 4vh; }
+        .t { background: #222; font-size: 2vw; color: #888; display: flex; align-items: center; justify-content: center; grid-row: span 4; border-bottom: 1px solid #333; height: calc(var(--cell-h) * 4); }
+        .c { background: #1a1a1a; height: var(--cell-h); pointer-events: none; }
+        
+        .footer-controls {
+            height: 8vh; background: #1a1a1a; border-top: 1px solid #444;
+            display: flex; align-items: center; justify-content: center; gap: 20px;
+            z-index: 200; position: relative; padding: 0 5px;
+        }
+
+        .block {
+            position: absolute; border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 2px; z-index: 50; display: flex; align-items: center; justify-content: center;
+            font-size: 2.5vw; font-weight: bold;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+            pointer-events: auto;
+        }
+        .block.locked { pointer-events: none; opacity: 0.4; }
+        .preview { opacity: 0.9; border: 2px dashed #fff; z-index: 100; }
+        .confirmed { background-color: #27ae60 !important; opacity: 1 !important; color: white !important; }
+
+        .temp-press-area {
+            position: absolute;
+            z-index: 180; 
+            background: rgba(0,0,0,0.3);
+            padding: 4px 8px;
+            border-radius: 4px;
+            pointer-events: auto;
+            cursor: pointer;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .ctrl-btn { 
+            cursor: pointer; padding: 12px 20px; border-radius: 6px; 
+            background: #333; border: 1px solid #555; font-size: 14px; color: white;
+            white-space: nowrap; touch-action: manipulation;
+        }
+        .del-btn { color: #ff4d4d; }
+        .ok-btn { color: #2ecc71; font-weight: bold; border: 2px solid #2ecc71; min-width: 80px; }
+        .split-btn { color: #f1c40f; font-weight: bold; border: 1px solid #f1c40f; }
+
+        .handle {
+            position: absolute; width: 28px; height: 28px;
+            background: white; border: 2px solid #333; border-radius: 4px;
+            z-index: 130; pointer-events: auto;
+        }
+        .handle.active { background: var(--active-color) !important; transform: scale(1.1); }
+        
+        /* Verschieben-Button: Um 100% (eigene Breite) nach links versetzt */
+        .center-move-btn {
+            position: absolute;
+            width: 40px; height: 40px; background: white; color: #333;
+            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            font-size: 24px; cursor: pointer; border: 2px solid #333;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.6); z-index: 160; pointer-events: auto;
+            top: 50%; left: 50%; 
+            transform: translate(-150%, -50%); 
+        }
+        .center-move-btn.active { 
+            background: var(--active-color); color: white; border-color: white; 
+            transform: translate(-150%, -50%) scale(1.1); 
+        }
+
+        .h-tl { top: -14px; left: -14px; } .h-tr { top: -14px; right: -14px; }
+        .h-bl { bottom: -14px; left: -14px; } .h-br { bottom: -14px; right: -14px; }
+        .h-t { top: -14px; left: calc(50% - 14px); } .h-b { bottom: -14px; left: calc(50% - 14px); }
+        .h-l { left: -14px; top: calc(50% - 14px); } .h-r { right: -14px; top: calc(50% - 14px); }
+
+        .btn { background: #444; color: white; border: none; padding: 8px 12px; border-radius: 4px; }
+
+        #temp-popup-overlay, #confirm-overlay, #clear-confirm-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.85); z-index: 2000; display: none;
+            align-items: center; justify-content: center; pointer-events: auto;
+        }
+        .popup-card {
+            background: #222; border: 3px solid #555; border-radius: 12px;
+            padding: 20px; width: 85vw; max-width: 320px; text-align: center;
+        }
+        .temp-display { font-size: 42px; font-weight: bold; margin: 15px 0; }
+        .temp-slider { width: 100%; margin: 30px 0; height: 40px; cursor: pointer; }
+        .popup-btns { display: flex; justify-content: space-between; gap: 15px; margin-top: 20px; }
+        .p-btn { flex: 1; padding: 15px; border-radius: 8px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .p-save { background: #27ae60; color: white; }
+        .p-cancel { background: #444; color: white; }
+        .p-danger { background: #c0392b; color: white; }
+    </style>
+</head>
+<body>
+
+    <div class="header-nav">
+        <button class="btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
+        <div id="live-info">- - -</div>
+        <button class="btn" style="background:#27ae60" onclick="console.log(blocks)">Fertig</button>
+    </div>
+
+    <div class="main-container">
+        <div id="grid" class="grid">
+            <div class="h">Zeit</div><div class="h">Mo</div><div class="h">Di</div><div class="h">Mi</div><div class="h">Do</div><div class="h">Fr</div><div class="h">Sa</div><div class="h">So</div>
+        </div>
+    </div>
+
+    <div id="footer" class="footer-controls">
+        <div id="edit-controls" style="display:none; align-items:center; gap:20px;">
+            <div id="split-btn" class="ctrl-btn split-btn" onmousedown="lockAndPrepareSplit(event)" ontouchstart="lockAndPrepareSplit(event)">✂ Split</div>
+            <div class="ctrl-btn ok-btn" onmousedown="confirmAction(event)" ontouchstart="confirmAction(event)">Speichern (OK)</div>
+            <div class="ctrl-btn del-btn" onmousedown="deleteBlock(event)" ontouchstart="deleteBlock(event)">✘ Löschen</div>
+        </div>
+        <div id="idle-controls" style="display:flex;">
+            <div class="ctrl-btn del-btn" onmousedown="askClearPlan(event)" ontouchstart="askClearPlan(event)">🗑 Plan leeren</div>
+        </div>
+    </div>
+
+    <div id="temp-popup-overlay">
+        <div class="popup-card" id="popup-box">
+            <h3 style="margin-top:0">Temperatur wählen</h3>
+            <div id="temp-val-display" class="temp-display">21.0 °C</div>
+            <input type="range" id="temp-input" class="temp-slider" min="15" max="25" step="0.5" value="21">
+            <div class="popup-btns">
+                <button class="p-btn p-cancel" onclick="cancelTempPopup()">Abbrechen</button>
+                <button class="p-btn p-save" onclick="saveTempPopup()">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="confirm-overlay">
+        <div class="popup-card">
+            <h3 style="color: #f1c40f;">Block teilen?</h3>
+            <p id="split-info-text"></p>
+            <div class="popup-btns">
+                <button class="p-btn p-cancel" onclick="unlockAndHideSplit()">Abbrechen</button>
+                <button class="p-btn p-save" onclick="executeSplit()">Ja, Teilen</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="clear-confirm-overlay">
+        <div class="popup-card">
+            <h3 style="color: #e74c3c;">Plan leeren?</h3>
+            <p>Möchtest du wirklich alle Blöcke unwiderruflich löschen?</p>
+            <div class="popup-btns">
+                <button class="p-btn p-cancel" onclick="hideClearPlan()">Abbrechen</button>
+                <button class="p-btn p-danger" onclick="executeClearPlan()">Ja, alles leeren</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const grid = document.getElementById('grid');
+        const footer = document.getElementById('footer');
+        const editControls = document.getElementById('edit-controls');
+        const idleControls = document.getElementById('idle-controls');
+        const liveInfo = document.getElementById('live-info');
+        const tempPopup = document.getElementById('temp-popup-overlay');
+        const tempInput = document.getElementById('temp-input');
+        const tempValDisplay = document.getElementById('temp-val-display');
+        const popupBox = document.getElementById('popup-box');
+        const splitBtn = document.getElementById('split-btn');
+        const splitConfirm = document.getElementById('confirm-overlay');
+        const clearConfirm = document.getElementById('clear-confirm-overlay');
+        const days = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+
+        let blocks = []; 
+        let currentAction = null; 
+        let editIdx = -1; 
+        let previewData = null; 
+        let isLocked = false;
+        let splitBuffer = null;
+
+        for (let i = 0; i < 96; i++) {
+            if (i % 4 === 0) {
+                const label = document.createElement('div');
+                label.className = 't'; label.innerText = `${Math.floor(i/4).toString().padStart(2,'0')}:00`;
+                grid.appendChild(label);
+            }
+            for (let d = 0; d < 7; d++) {
+                const cell = document.createElement('div');
+                cell.className = 'c';
+                grid.appendChild(cell);
+            }
+        }
+
+        function getColorForTemp(temp) {
+            let r, g, b;
+            if (temp <= 23) {
+                let ratio = (temp - 15) / 8;
+                r = 255; g = Math.round(255 * (1 - ratio)); b = 0;
+            } else {
+                let ratio = (temp - 23) / 2;
+                r = Math.round(255 + ratio * (238 - 255)); g = Math.round(ratio * 130); b = Math.round(ratio * 238);
+            }
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        function formatTime(t) {
+            let normT = ((t % 96) + 96) % 96;
+            const h = Math.floor(normT / 4);
+            const m = (normT % 4) * 15;
+            return `${h.toString().padStart(2, '0')}.${m.toString().padStart(2, '0')}`;
+        }
+
+        function getDayName(d) { return days[((d % 7) + 7) % 7]; }
+
+        function updateLiveInfo(b) {
+            if (!b) { 
+                liveInfo.innerText = "- - -"; 
+                liveInfo.style.color = "#aaa"; 
+                editControls.style.display = "none";
+                idleControls.style.display = "flex";
+                return; 
+            }
+            const dayStr = b.dStart === b.dEnd ? getDayName(b.dStart) : `${getDayName(b.dStart)} - ${getDayName(b.dEnd)}`;
+            liveInfo.innerText = `${dayStr}, ${formatTime(b.tStart)} - ${formatTime(b.tEnd + 1)}`;
+            liveInfo.style.color = getColorForTemp(b.temp || 21);
+            
+            editControls.style.display = "flex";
+            idleControls.style.display = "none";
+            splitBtn.style.display = (b.dEnd > b.dStart) ? "block" : "none";
+        }
+
+        function askClearPlan(e) { if(e) { e.preventDefault(); e.stopPropagation(); } clearConfirm.style.display = 'flex'; }
+        function hideClearPlan() { clearConfirm.style.display = 'none'; }
+        function executeClearPlan() { blocks = []; clearConfirm.style.display = 'none'; render(); }
+
+        function processOverwrite(newB) {
+            let fragments = [];
+            for (let d = newB.dStart; d <= newB.dEnd; d++) {
+                let mDay = ((d % 7) + 7) % 7;
+                for (let t = newB.tStart; t <= newB.tEnd; t++) {
+                    let mTime = ((t % 96) + 96) % 96;
+                    let last = fragments[fragments.length - 1];
+                    if (last && last.dEndReal === d && last.tEndReal === t - 1 && ((last.tEndReal % 96) + 96) % 96 < 95) {
+                        last.tEnd = mTime; last.tEndReal = t;
+                    } else {
+                        fragments.push({ dStart: mDay, dEnd: mDay, dEndReal: d, tStart: mTime, tEnd: mTime, tEndReal: t });
+                    }
+                }
+            }
+            fragments.forEach(frag => {
+                let nextBlocks = [];
+                blocks.forEach(oldB => {
+                    const dayOverlap = Math.max(frag.dStart, oldB.dStart) <= Math.min(frag.dEnd, oldB.dEnd);
+                    const timeOverlap = Math.max(frag.tStart, oldB.tStart) <= Math.min(frag.tEnd, oldB.tEnd);
+                    if (dayOverlap && timeOverlap) {
+                        if (oldB.dStart < frag.dStart) nextBlocks.push({...oldB, dEnd: frag.dStart - 1});
+                        if (oldB.dEnd > frag.dEnd) nextBlocks.push({...oldB, dStart: frag.dEnd + 1});
+                        let overlapPart = { ...oldB, dStart: Math.max(oldB.dStart, frag.dStart), dEnd: Math.min(oldB.dEnd, frag.dEnd) };
+                        if (overlapPart.tStart < frag.tStart) nextBlocks.push({...overlapPart, tEnd: frag.tStart - 1});
+                        if (overlapPart.tEnd > frag.tEnd) nextBlocks.push({...overlapPart, tStart: frag.tEnd + 1});
+                    } else {
+                        nextBlocks.push(oldB);
+                    }
+                });
+                blocks = nextBlocks;
+            });
+        }
+
+        function lockAndPrepareSplit(e) {
+            if(e) { e.preventDefault(); e.stopPropagation(); }
+            splitBuffer = JSON.parse(JSON.stringify(previewData));
+            document.getElementById('split-info-text').innerText = `Bereich ${getDayName(splitBuffer.dStart)} bis ${getDayName(splitBuffer.dEnd)} in Einzeltage zerlegen?`;
+            splitConfirm.style.display = 'flex';
+        }
+
+        function unlockAndHideSplit() { splitConfirm.style.display = 'none'; }
+
+        function executeSplit() {
+            if (!splitBuffer) return;
+            if (editIdx > -1) blocks.splice(editIdx, 1);
+            for (let d = splitBuffer.dStart; d <= splitBuffer.dEnd; d++) {
+                const single = { dStart: d, dEnd: d, tStart: splitBuffer.tStart, tEnd: splitBuffer.tEnd, temp: splitBuffer.temp };
+                processOverwrite(single);
+                blocks.push(single);
+            }
+            splitConfirm.style.display = 'none';
+            previewData = null; editIdx = -1; currentAction = null; render();
+        }
+
+        function confirmAction(e) {
+            if(e) { e.preventDefault(); e.stopPropagation(); }
+            if (!previewData || isLocked) return;
+            const isNew = (editIdx === -1);
+            isLocked = true;
+            const nb = JSON.parse(JSON.stringify(previewData));
+            if (!isNew) blocks.splice(editIdx, 1);
+            processOverwrite(nb);
+            let currentD = nb.dStart;
+            while(currentD <= nb.dEnd) {
+                let startD = ((currentD % 7) + 7) % 7;
+                let endD = startD;
+                let runD = currentD;
+                while(runD < nb.dEnd && ((runD % 7) + 7) % 7 < 6) { runD++; endD = ((runD % 7) + 7) % 7; }
+                let currentT = nb.tStart;
+                while(currentT <= nb.tEnd) {
+                    let startT = ((currentT % 96) + 96) % 96;
+                    let endT = startT;
+                    let runT = currentT;
+                    while(runT < nb.tEnd && ((runT % 96) + 96) % 96 < 95) { runT++; endT = ((runT % 96) + 96) % 96; }
+                    blocks.push({ dStart: startD, dEnd: endD, tStart: startT, tEnd: endT, temp: nb.temp });
+                    currentT = runT + 1;
+                }
+                currentD = runD + 1;
+            }
+            const lastIdx = blocks.length - 1;
+            previewData = null; editIdx = -1; currentAction = null;
+            render(lastIdx);
+            setTimeout(() => { 
+                isLocked = false; 
+                if(isNew) { editIdx = lastIdx; previewData = JSON.parse(JSON.stringify(blocks[lastIdx])); openTempPopup(); }
+                else render();
+            }, isNew ? 400 : 800);
+        }
+
+        function getCoords(e) {
+            const ev = e.touches ? e.touches[0] : e;
+            const rect = grid.getBoundingClientRect();
+            const colW = rect.width / 8;
+            const rowH = (rect.height * 0.96) / 96;
+            const x = ev.clientX - rect.left;
+            const y = ev.clientY - rect.top - (rect.height * 0.04);
+            return { d: Math.floor(x / colW) - 1, t: Math.floor(y / rowH) };
+        }
+
+        function render(confirmedIdx = -1) {
+            document.querySelectorAll('.block').forEach(b => b.remove());
+            updateLiveInfo(previewData);
+            blocks.forEach((b, idx) => {
+                if (idx === editIdx) return;
+                drawLinearBlock2D(b, idx, false, idx === confirmedIdx, previewData !== null);
+            });
+            if (previewData) drawLinearBlock2D(previewData, editIdx, true, false, false);
+            updateActiveStates();
+        }
+
+        function drawLinearBlock2D(b, idx, isPreview, isJustConfirmed, isBgBlock) {
+            const blockColor = getColorForTemp(b.temp || 21.0);
+            for (let d = b.dStart; d <= b.dEnd; d++) {
+                const gridDay = ((d % 7) + 7) % 7;
+                let runEndD = d;
+                while (runEndD < b.dEnd && (((runEndD + 1) % 7) + 7) % 7 !== 0) { runEndD++; }
+                for (let t = b.tStart; t <= b.tEnd; t++) {
+                    const gridTime = ((t % 96) + 96) % 96;
+                    let runEndT = t;
+                    while (runEndT < b.tEnd && (((runEndT + 1) % 96) + 96) % 96 !== 0) { runEndT++; }
+                    createBlockElement(gridDay, ((runEndD % 7) + 7) % 7, gridTime, ((runEndT % 96) + 96) % 96, 
+                        idx, isPreview, isJustConfirmed, isBgBlock, d === b.dStart, runEndD === b.dEnd, t === b.tStart, runEndT === b.tEnd, b.temp || 21.0, blockColor);
+                    t = runEndT;
+                }
+                d = runEndD;
+            }
+        }
+
+        function createBlockElement(dS, dE, tS, tE, idx, isPreview, isJustConfirmed, isBgBlock, isRealStartD, isRealEndD, isRealStartT, isRealEndT, temp, color) {
+            const colW = grid.offsetWidth / 8;
+            const rowH = (grid.offsetHeight * 0.96) / 96;
+            const el = document.createElement('div');
+            el.className = 'block';
+            if(isPreview) el.classList.add('preview');
+            if(isJustConfirmed) el.classList.add('confirmed');
+            if(isBgBlock) el.classList.add('locked');
+            el.style.backgroundColor = color;
+            el.style.color = (temp < 19.5) ? "#111" : "#fff";
+            el.style.left = ((dS + 1) * colW) + "px";
+            el.style.width = ((dE - dS + 1) * colW - 1) + "px";
+            el.style.top = (grid.offsetHeight * 0.04 + tS * rowH) + "px";
+            el.style.height = ((tE - tS + 1) * rowH) + "px";
+
+            if (isPreview) {
+                const tempLabel = document.createElement('div');
+                tempLabel.className = 'temp-press-area';
+                tempLabel.innerText = temp.toFixed(1) + "°";
+                tempLabel.onmousedown = tempLabel.ontouchstart = (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    openTempPopup();
+                };
+                el.appendChild(tempLabel);
+
+                const moveIcon = document.createElement('div');
+                moveIcon.className = 'center-move-btn';
+                moveIcon.innerHTML = '✥';
+                if(currentAction && currentAction.type === 'move') moveIcon.classList.add('active');
+                moveIcon.onmousedown = moveIcon.ontouchstart = (e) => toggleTransform(e, 'move');
+                el.appendChild(moveIcon);
+                
+                const isNarrow = (dE - dS === 0);
+                const isFlat = (tE - tS < 8);
+                const hShift = 28;
+
+                const hPos = [];
+                if(isRealStartT) hPos.push('t'); if(isRealEndT) hPos.push('b');
+                if(isRealStartD) hPos.push('l'); if(isRealEndD) hPos.push('r');
+                if(isRealStartD && isRealStartT) hPos.push('tl'); if(isRealEndD && isRealStartT) hPos.push('tr');
+                if(isRealStartD && isRealEndT) hPos.push('bl'); if(isRealEndD && isRealEndT) hPos.push('br');
+                
+                hPos.forEach(pos => {
+                    const handle = document.createElement('div');
+                    handle.className = `handle h-${pos}`;
+                    if (isNarrow) {
+                        if (pos.includes('l')) handle.style.left = `-${hShift + 2}px`;
+                        if (pos.includes('r')) handle.style.right = `-${hShift + 2}px`;
+                    }
+                    if (isFlat) {
+                        if (pos.includes('t')) handle.style.top = `-${hShift + 2}px`;
+                        if (pos.includes('b')) handle.style.bottom = `-${hShift + 2}px`;
+                    }
+                    handle.onmousedown = handle.ontouchstart = (e) => toggleTransform(e, pos);
+                    el.appendChild(handle);
+                });
+            } else if (!isBgBlock) {
+                el.innerText = temp.toFixed(1) + "°";
+                el.onmousedown = el.ontouchstart = (e) => { 
+                    if(isLocked) return; e.stopPropagation();
+                    editIdx = idx; previewData = JSON.parse(JSON.stringify(blocks[idx])); render(); 
+                };
+            }
+            grid.appendChild(el);
+        }
+
+        function openTempPopup() { tempInput.value = previewData.temp || 21.0; updatePopupVisuals(tempInput.value); tempPopup.style.display = 'flex'; }
+        function updatePopupVisuals(val) { const c = getColorForTemp(val); tempValDisplay.innerText = parseFloat(val).toFixed(1) + " °C"; tempValDisplay.style.color = c; popupBox.style.borderColor = c; }
+        tempInput.oninput = () => { updatePopupVisuals(tempInput.value); if(previewData) { previewData.temp = parseFloat(tempInput.value); render(); } };
+        function cancelTempPopup() { tempPopup.style.display = 'none'; previewData = null; editIdx = -1; render(); }
+        function saveTempPopup() { if (previewData) { previewData.temp = parseFloat(tempInput.value); tempPopup.style.display = 'none'; confirmAction(); } }
+
+        function toggleTransform(e, type) {
+            if(e) { e.preventDefault(); e.stopPropagation(); }
+            currentAction = (currentAction && currentAction.type === type) ? null : { type, startCoords: getCoords(e), orig: JSON.parse(JSON.stringify(previewData)) };
+            render();
+        }
+
+        function updateActiveStates() {
+            document.querySelectorAll('.handle, .ctrl-btn, .center-move-btn').forEach(el => el.classList.remove('active'));
+            if (!currentAction) return;
+            const ah = document.querySelector(`.handle.h-${currentAction.type}`);
+            if (ah) ah.classList.add('active');
+            if (currentAction.type === 'move') {
+                document.querySelectorAll('.center-move-btn').forEach(btn => btn.classList.add('active'));
+            }
+        }
+
+        function deleteBlock(e) { if(e) { e.preventDefault(); e.stopPropagation(); } if (editIdx > -1) blocks.splice(editIdx, 1); previewData = null; editIdx = -1; currentAction = null; render(); }
+
+        grid.onmousedown = grid.ontouchstart = (e) => {
+            if (isLocked || tempPopup.style.display === 'flex' || splitConfirm.style.display === 'flex' || clearConfirm.style.display === 'flex') return;
+            if (previewData && !currentAction) { previewData = null; editIdx = -1; render(); return; }
+            if (currentAction) { currentAction.startCoords = getCoords(e); currentAction.orig = JSON.parse(JSON.stringify(previewData)); return; }
+            const c = getCoords(e); if (c.d < 0) return;
+            editIdx = -1; previewData = { dStart: c.d, dEnd: c.d, tStart: c.t, tEnd: c.t, temp: 21.0 };
+            currentAction = { type: 'create', startCoords: c }; render();
+        };
+
+        window.onmousemove = window.ontouchmove = (e) => {
+            if (!currentAction || isLocked || tempPopup.style.display === 'flex') return;
+            const c = getCoords(e); const b = previewData; const o = currentAction.orig;
+            if (currentAction.type === 'create') {
+                b.dStart = Math.min(currentAction.startCoords.d, c.d); b.dEnd = Math.max(currentAction.startCoords.d, c.d);
+                b.tStart = Math.min(currentAction.startCoords.t, c.t); b.tEnd = Math.max(currentAction.startCoords.t, c.t);
+            } else if (currentAction.type === 'move') {
+                const dt = c.t - currentAction.startCoords.t; const dd = c.d - currentAction.startCoords.d;
+                b.dStart = o.dStart + dd; b.dEnd = o.dEnd + dd; b.tStart = o.tStart + dt; b.tEnd = o.tEnd + dt;
+            } else {
+                const dt = c.t - currentAction.startCoords.t; const dd = c.d - currentAction.startCoords.d;
+                if (currentAction.type.includes('t')) b.tStart = Math.min(o.tEnd, o.tStart + dt);
+                if (currentAction.type.includes('b')) b.tEnd = Math.max(o.tStart, o.tEnd + dt);
+                if (currentAction.type.includes('l')) b.dStart = Math.min(o.dEnd, o.dStart + dd);
+                if (currentAction.type.includes('r')) b.dEnd = Math.max(o.dStart, o.dEnd + dd);
+            }
+            if (b.dEnd - b.dStart > 6) b.dEnd = b.dStart + 6; 
+            if (b.tEnd - b.tStart > 95) b.tEnd = b.tStart + 95;
+            render(); if(e.cancelable) e.preventDefault();
+        };
+
+        window.onmouseup = window.ontouchend = () => { if (currentAction && currentAction.type === 'create') { currentAction = null; render(); } };
+        function toggleFullscreen() { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
+        window.addEventListener('resize', render);
+        render();
+    </script>
+</body>
+</html>
