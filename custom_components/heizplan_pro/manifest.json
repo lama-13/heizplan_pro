@@ -1,9 +1,9 @@
 {
   "domain": "heizplan_pro",
   "name": "Heizplan Pro",
-  "codeowners": ["@dein-github-name"],
-  "documentation": "https://github.com/dein-github-name/heizplan_pro",
-  "version": "1.0.0",
-  "issue_tracker": "https://github.com/dein-github-name/heizplan_pro/issues",
+  "codeowners": ["@lama-13"],
+  "documentation": "https://github.com/lama-13/heizplan_pro",
+  "version": "0.0.1",
+  "issue_tracker": "https://github.com/lama-13/heizplan_pro/issues",
   "integration_type": "helper"
 }
